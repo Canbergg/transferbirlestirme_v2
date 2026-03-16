@@ -10,7 +10,8 @@ st.caption("Önce otomatik eşleştirir; bulunamazsa seçim kutusu açar. Pair =
 
 OUTPUT_COLS = [
     "Pair", "Depo Kodu", "Depo Adı", "Madde Kodu", "Madde Açıklaması",
-    "Minimum Miktar", "Stok", "Satış", "Envanter Gün Sayısı", "En Yakın Tedarik Tarihi"
+    "Minimum Miktar", "Stok", "Satış", "Envanter Gün Sayısı", "En Yakın Tedarik Tarihi",
+    "İhtiyaç", "Transfer Edilebilir Adet"
 ]
 
 # ----------------- Alias listeleri -----------------
@@ -360,7 +361,37 @@ if go:
     # Tedarik tarihi: Madde Kodu üzerinden eşleştir
     fallback = datetime.today() + timedelta(days=30)
     out["En Yakın Tedarik Tarihi"] = out["Madde Kodu"].map(supply_map).fillna(fallback)
-    out["En Yakın Tedarik Tarihi"] = pd.to_datetime(out["En Yakın Tedarik Tarihi"]).dt.strftime("%d/%m/%Y")
+    tedarik_dt = pd.to_datetime(out["En Yakın Tedarik Tarihi"])
+
+    # Bugün (sabit referans, Excel'deki O1 gibi)
+    today = pd.Timestamp(datetime.today().date())
+
+    # Tedarike kadar gün farkı (J - bugün)
+    gun_farki = (tedarik_dt - today).dt.days.clip(lower=0)
+
+    satis = out["Satış"]
+    stok  = out["Stok"]
+    min_m = out["Minimum Miktar"]
+    env   = out["Envanter Gün Sayısı"]
+
+    # Tahmini satış = ROUND(Satış / Envanter Gün Sayısı * gün_farkı, 0)
+    # Envanter Gün Sayısı = 0 ise IFERROR devreye girer
+    with pd.option_context('mode.use_inf_as_na', True):
+        tahmini_satis = (satis / env.replace(0, pd.NA) * gun_farki).round(0).fillna(0)
+
+    # İhtiyaç = MAX(IFERROR(tahmini_satis, min_miktar) - stok, 0)
+    ihtiyac_base = satis.where(env != 0, other=pd.NA)
+    ihtiyac_base = (ihtiyac_base / env.replace(0, pd.NA) * gun_farki).round(0)
+    ihtiyac_base = ihtiyac_base.fillna(min_m)  # IFERROR → min miktar
+    out["İhtiyaç"] = (ihtiyac_base - stok).clip(lower=0)
+
+    # Transfer edilebilir adet = MAX(stok - min_miktar - tahmini_satis, 0)
+    out["Transfer Edilebilir Adet"] = (stok - min_m - tahmini_satis).clip(lower=0)
+
+    out["İhtiyaç"] = out["İhtiyaç"].round(0).astype(int)
+    out["Transfer Edilebilir Adet"] = out["Transfer Edilebilir Adet"].round(0).astype(int)
+
+    out["En Yakın Tedarik Tarihi"] = tedarik_dt.dt.strftime("%d/%m/%Y")
 
     out = out.reindex(columns=OUTPUT_COLS)
 
