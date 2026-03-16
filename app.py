@@ -369,10 +369,10 @@ if go:
     # Tedarike kadar gün farkı (J - bugün)
     gun_farki = (tedarik_dt - today).dt.days.clip(lower=0)
 
-    satis = out["Satış"]
-    stok  = out["Stok"]
-    min_m = out["Minimum Miktar"]
-    env   = out["Envanter Gün Sayısı"]
+    satis = pd.to_numeric(out["Satış"], errors="coerce").fillna(0)
+    stok  = pd.to_numeric(out["Stok"], errors="coerce").fillna(0)
+    min_m = pd.to_numeric(out["Minimum Miktar"], errors="coerce").fillna(0)
+    env   = pd.to_numeric(out["Envanter Gün Sayısı"], errors="coerce").fillna(0)
 
     # Tahmini satış = ROUND(Satış / Envanter Gün Sayısı * gün_farkı, 0)
     # Envanter Gün Sayısı = 0 ise IFERROR devreye girer
