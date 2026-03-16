@@ -123,8 +123,8 @@ def parse_supply_file(file) -> dict:
     """
     raw = pd.read_excel(file, sheet_name=0, header=None, dtype=str)
 
-    # Tarih sütunlarını bul (satır 0'dan)
-    date_row = raw.iloc[0]
+    # Tarih sütunlarını bul (satır 1'den — satır 0 genel başlık)
+    date_row = raw.iloc[1]
     date_cols = {}  # kolon index -> datetime
     for col_idx, val in enumerate(date_row):
         if val is None or str(val).strip() in ("", "nan"):
@@ -138,8 +138,8 @@ def parse_supply_file(file) -> dict:
     fallback_date = datetime.today() + timedelta(days=30)
     supply_map = {}  # madde_kodu -> en yakın tedarik tarihi
 
-    # Satır 2'den itibaren ürün satırları
-    for row_idx in range(2, len(raw)):
+    # Satır 3'ten itibaren ürün satırları (satır 2 etiket satırı)
+    for row_idx in range(3, len(raw)):
         row = raw.iloc[row_idx]
         madde_kodu = str(row.iloc[3]).strip() if len(row) > 3 else ""
         if not madde_kodu or madde_kodu.lower() == "nan":
