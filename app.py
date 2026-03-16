@@ -375,21 +375,20 @@ if go:
     env   = pd.to_numeric(out["Envanter Gün Sayısı"], errors="coerce").fillna(0)
 
     # Tahmini satış = ROUND(Satış / Envanter Gün Sayısı * gün_farkı, 0)
-    # Envanter Gün Sayısı = 0 ise IFERROR devreye girer
-    with pd.option_context('mode.use_inf_as_na', True):
-        tahmini_satis = (satis / env.replace(0, pd.NA) * gun_farki).round(0).fillna(0)
+    # env=0 olan yerlerde sıfıra bölmeden kaçın, sonucu 0 say
+    env_safe = env.copy().astype(float)
+    env_safe[env_safe == 0] = float("nan")
+
+    tahmini_satis = (satis.astype(float) / env_safe * gun_farki.astype(float)).round(0).fillna(0)
 
     # İhtiyaç = MAX(IFERROR(tahmini_satis, min_miktar) - stok, 0)
-    ihtiyac_base = satis.where(env != 0, other=pd.NA)
-    ihtiyac_base = (ihtiyac_base / env.replace(0, pd.NA) * gun_farki).round(0)
-    ihtiyac_base = ihtiyac_base.fillna(min_m)  # IFERROR → min miktar
-    out["İhtiyaç"] = (ihtiyac_base - stok).clip(lower=0)
+    # env=0 ise IFERROR → min_miktar kullan
+    ihtiyac_base = tahmini_satis.copy()
+    ihtiyac_base[env == 0] = min_m[env == 0]
+    out["İhtiyaç"] = (ihtiyac_base - stok.astype(float)).clip(lower=0).round(0).astype(int)
 
     # Transfer edilebilir adet = MAX(stok - min_miktar - tahmini_satis, 0)
-    out["Transfer Edilebilir Adet"] = (stok - min_m - tahmini_satis).clip(lower=0)
-
-    out["İhtiyaç"] = out["İhtiyaç"].round(0).astype(int)
-    out["Transfer Edilebilir Adet"] = out["Transfer Edilebilir Adet"].round(0).astype(int)
+    out["Transfer Edilebilir Adet"] = (stok.astype(float) - min_m.astype(float) - tahmini_satis).clip(lower=0).round(0).astype(int)
 
     out["En Yakın Tedarik Tarihi"] = tedarik_dt.dt.strftime("%d/%m/%Y")
 
