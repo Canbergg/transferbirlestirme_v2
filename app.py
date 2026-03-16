@@ -121,11 +121,30 @@ def parse_supply_file(file) -> dict:
     Her madde kodu için: miktar > 0 olan ilk tarihi döndürür.
     Yoksa bugün + 1 ay.
     """
-    raw = pd.read_excel(file, sheet_name=0, header=None, dtype=str)
+    # Supply dosyasında 'supply' adlı sheet varsa onu, yoksa ilk sheet'i oku
+    xl = pd.ExcelFile(file)
+    sheet = 'supply' if 'supply' in xl.sheet_names else xl.sheet_names[0]
+    raw = pd.read_excel(file, sheet_name=sheet, header=None, dtype=str)
 
-    # Tarih sütunlarını bul (satır 1'den — satır 0 genel başlık)
-    date_row = raw.iloc[1]
-    date_cols = {}  # kolon index -> datetime
+    # Tarih satırını otomatik bul (dd/mm/yyyy formatında değer içeren ilk satır)
+    date_row_idx = None
+    for i in range(min(10, len(raw))):
+        for val in raw.iloc[i]:
+            try:
+                dt = pd.to_datetime(str(val).strip(), dayfirst=True)
+                if dt.year > 2000:
+                    date_row_idx = i
+                    break
+            except Exception:
+                pass
+        if date_row_idx is not None:
+            break
+
+    if date_row_idx is None:
+        return {}
+
+    date_row = raw.iloc[date_row_idx]
+    date_cols = {}
     for col_idx, val in enumerate(date_row):
         if val is None or str(val).strip() in ("", "nan"):
             continue
@@ -135,16 +154,19 @@ def parse_supply_file(file) -> dict:
         except Exception:
             pass
 
-    fallback_date = datetime.today() + timedelta(days=30)
-    supply_map = {}  # madde_kodu -> en yakın tedarik tarihi
+    # Madde kodu ilk kolonda (supply sheet yapısı)
+    madde_col_idx = 0
 
-    # Satır 3'ten itibaren ürün satırları (satır 2 etiket satırı)
-    for row_idx in range(3, len(raw)):
+    fallback_date = datetime.today() + timedelta(days=30)
+    supply_map = {}
+
+    for row_idx in range(date_row_idx + 1, len(raw)):
         row = raw.iloc[row_idx]
-        madde_kodu = str(row.iloc[3]).strip() if len(row) > 3 else ""
+        madde_kodu = str(row.iloc[madde_col_idx]).strip()
         if not madde_kodu or madde_kodu.lower() == "nan":
             continue
 
+        today = pd.Timestamp(datetime.today().date())
         earliest = None
         for col_idx, dt in sorted(date_cols.items(), key=lambda x: x[1]):
             val = str(row.iloc[col_idx]).strip()
@@ -152,7 +174,7 @@ def parse_supply_file(file) -> dict:
                 num = float(val.replace(".", "").replace(",", "."))
             except Exception:
                 num = 0
-            if num > 0:
+            if num > 0 and dt >= today:
                 earliest = dt
                 break
 
